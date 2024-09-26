@@ -3,7 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createWorker } from 'tesseract.js';
 import Webcam from 'react-webcam';
+import Modal from 'react-modal';
 import '../styles/Animations.css';
+
+// Set the app element for react-modal
+Modal.setAppElement('#root');
 
 const Home = () => {
   const [image, setImage] = useState(null);
@@ -117,6 +121,10 @@ const Home = () => {
     setError(null);
   };
 
+  const closeCamera = () => {
+    setIsCameraOpen(false);
+  };
+
   const captureImage = useCallback(() => {
     const imageSrc = webcamRef.current.getScreenshot();
     if (imageSrc) {
@@ -138,8 +146,8 @@ const Home = () => {
   }, [webcamRef]);
 
   const videoConstraints = {
-    width: 720,
-    height: 480,
+    width: 1280,
+    height: 720,
     facingMode: 'environment'
   };
 
@@ -156,14 +164,6 @@ const Home = () => {
           >
             {image ? (
               <img src={image} alt="Captured" className="max-w-full h-auto mx-auto" />
-            ) : isCameraOpen ? (
-              <Webcam
-                audio={false}
-                ref={webcamRef}
-                screenshotFormat="image/jpeg"
-                videoConstraints={videoConstraints}
-                className="max-w-full h-auto mx-auto"
-              />
             ) : (
               <p className="text-emerald-700">Drag and drop an image here, or click to select a file</p>
             )}
@@ -182,21 +182,12 @@ const Home = () => {
             >
               Select Image
             </button>
-            {!isCameraOpen ? (
-              <button
-                onClick={openCamera}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-              >
-                Open Camera
-              </button>
-            ) : (
-              <button
-                onClick={captureImage}
-                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-              >
-                Capture Photo
-              </button>
-            )}
+            <button
+              onClick={openCamera}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+            >
+              Open Camera
+            </button>
           </div>
           {error && <p className="text-red-500 mb-4">{error}</p>}
           {isExtracting && (
@@ -224,6 +215,35 @@ const Home = () => {
           </button>
         </div>
       </div>
+      <Modal
+        isOpen={isCameraOpen}
+        onRequestClose={closeCamera}
+        contentLabel="Camera Modal"
+        className="modal"
+        overlayClassName="overlay"
+      >
+        <div className="flex flex-col items-center">
+          <Webcam
+            audio={false}
+            ref={webcamRef}
+            screenshotFormat="image/jpeg"
+            videoConstraints={videoConstraints}
+            className="w-full h-auto"
+          />
+          <button
+            onClick={captureImage}
+            className="bg-blue-500 text-white px-4 py-2 rounded mt-4 hover:bg-blue-600 transition-colors"
+          >
+            Capture Photo
+          </button>
+          <button
+            onClick={closeCamera}
+            className="bg-red-500 text-white px-4 py-2 rounded mt-2 hover:bg-red-600 transition-colors"
+          >
+            Close Camera
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };
