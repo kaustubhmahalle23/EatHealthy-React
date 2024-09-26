@@ -1,14 +1,20 @@
-import { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createWorker } from 'tesseract.js';
+import Webcam from 'react-webcam';
+import '../styles/Animations.css';
 
 const Home = () => {
   const [image, setImage] = useState(null);
   const [extractedText, setExtractedText] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [error, setError] = useState(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const webcamRef = useRef(null);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -24,7 +30,7 @@ const Home = () => {
   const handleFile = async (file) => {
     if (file && file.type.startsWith('image/')) {
       setImage(URL.createObjectURL(file));
-      setIsLoading(true);
+      setIsExtracting(true);
       try {
         const text = await extractTextFromImage(file);
         setExtractedText(text);
@@ -33,17 +39,26 @@ const Home = () => {
         setError('Error extracting text from image');
         console.error('Text extraction error:', error);
       }
-      setIsLoading(false);
+      setIsExtracting(false);
     } else {
       setError('Please upload an image file');
     }
   };
 
   const extractTextFromImage = async (file) => {
-    const worker = await createWorker('eng');
-    const { data: { text } } = await worker.recognize(file);
-    await worker.terminate();
-    return text;
+    setIsExtracting(true);
+    setError(null);
+    try {
+      const worker = await createWorker('eng');
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
+      setExtractedText(text);
+    } catch (err) {
+      console.error('Error extracting text:', err);
+      setError('Failed to extract text from the image. Please try again.');
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const handleSubmit = async () => {
@@ -54,7 +69,7 @@ const Home = () => {
       return;
     }
 
-    setIsLoading(true);
+    setIsAnalyzing(true);
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
@@ -93,52 +108,122 @@ const Home = () => {
       console.error('Error calling Gemini API:', error);
       setError('An error occurred while processing the ingredients');
     } finally {
-      setIsLoading(false);
+      setIsAnalyzing(false);
     }
   };
 
+  const openCamera = () => {
+    setIsCameraOpen(true);
+    setError(null);
+  };
+
+  const captureImage = useCallback(() => {
+    const imageSrc = webcamRef.current.getScreenshot();
+    if (imageSrc) {
+      setImage(imageSrc);
+      setIsCameraOpen(false);
+
+      // Convert base64 to blob
+      fetch(imageSrc)
+        .then(res => res.blob())
+        .then(blob => {
+          const file = new File([blob], 'captured-image.jpg', { type: 'image/jpeg' });
+          extractTextFromImage(file);
+        })
+        .catch(err => {
+          console.error('Error processing captured image:', err);
+          setError('Failed to process the captured image. Please try again.');
+        });
+    }
+  }, [webcamRef]);
+
+  const videoConstraints = {
+    width: 720,
+    height: 480,
+    facingMode: 'environment'
+  };
+
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6 text-center">Analyze Product Ingredients</h1>
-      <div
-        onDrop={handleDrop}
-        onDragOver={(e) => e.preventDefault()}
-        className="border-4 border-dashed border-gray-300 rounded-lg p-8 mb-6 text-center cursor-pointer"
-      >
-        {image ? (
-          <img src={image} alt="Uploaded" className="max-w-full h-auto mx-auto" />
-        ) : (
-          <p>Drag and drop an image here, or click to select a file</p>
-        )}
-        <input
-          type="file"
-          accept="image/*"
-          onChange={handleFileInput}
-          className="hidden"
-          id="fileInput"
-        />
-        <label htmlFor="fileInput" className="mt-4 inline-block bg-blue-500 text-white px-4 py-2 rounded cursor-pointer">
-          Select Image
-        </label>
-      </div>
-      {error && <p className="text-red-500 mb-4">{error}</p>}
-      {extractedText && (
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold mb-2">Extracted Text:</h2>
-          <textarea
-            value={extractedText}
-            onChange={(e) => setExtractedText(e.target.value)}
-            className="w-full h-32 p-2 border border-gray-300 rounded"
-          />
+    <div className="flex-grow relative min-h-screen">
+      <div className="animated-background"></div>
+      <div className="relative z-10 py-8">
+        <div className="max-w-2xl mx-auto bg-white bg-opacity-80 backdrop-blur-sm rounded-lg shadow-lg p-8">
+          <h1 className="text-3xl font-bold mb-6 text-center text-emerald-700">Analyze Product Ingredients</h1>
+          <div
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            className="border-4 border-dashed border-emerald-200 rounded-lg p-8 mb-6 text-center cursor-pointer bg-emerald-50 bg-opacity-50"
+          >
+            {image ? (
+              <img src={image} alt="Captured" className="max-w-full h-auto mx-auto" />
+            ) : isCameraOpen ? (
+              <Webcam
+                audio={false}
+                ref={webcamRef}
+                screenshotFormat="image/jpeg"
+                videoConstraints={videoConstraints}
+                className="max-w-full h-auto mx-auto"
+              />
+            ) : (
+              <p className="text-emerald-700">Drag and drop an image here, or click to select a file</p>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileInput}
+              className="hidden"
+              ref={fileInputRef}
+            />
+          </div>
+          <div className="flex justify-center space-x-4 mb-6">
+            <button
+              onClick={() => fileInputRef.current.click()}
+              className="bg-emerald-500 text-white px-4 py-2 rounded hover:bg-emerald-600 transition-colors"
+            >
+              Select Image
+            </button>
+            {!isCameraOpen ? (
+              <button
+                onClick={openCamera}
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+              >
+                Open Camera
+              </button>
+            ) : (
+              <button
+                onClick={captureImage}
+                className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+              >
+                Capture Photo
+              </button>
+            )}
+          </div>
+          {error && <p className="text-red-500 mb-4">{error}</p>}
+          {isExtracting && (
+            <div className="mb-4">
+              <p className="text-center mb-2 text-emerald-700">Extracting text from image...</p>
+              {/* Add a loading spinner here if you have one */}
+            </div>
+          )}
+          {extractedText && (
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold mb-2 text-emerald-700">Extracted Text:</h2>
+              <textarea
+                value={extractedText}
+                onChange={(e) => setExtractedText(e.target.value)}
+                className="w-full h-32 p-2 border border-emerald-300 rounded focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+              />
+            </div>
+          )}
+          <button
+            onClick={handleSubmit}
+            disabled={!extractedText || isAnalyzing}
+            className="w-full bg-emerald-500 text-white py-2 rounded disabled:bg-gray-300 relative hover:bg-emerald-600 transition-colors"
+          >
+            {isAnalyzing ? 'Analyzing...' : 'Analyze Ingredients'}
+          </button>
         </div>
-      )}
-      <button
-        onClick={handleSubmit}
-        disabled={!extractedText || isLoading}
-        className="w-full bg-green-500 text-white py-2 rounded disabled:bg-gray-300"
-      >
-        {isLoading ? 'Processing...' : 'Analyze Ingredients'}
-      </button>
+      </div>
     </div>
   );
 };
